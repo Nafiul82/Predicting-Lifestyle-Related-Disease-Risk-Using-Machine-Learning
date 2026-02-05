@@ -1,7 +1,7 @@
 library(shiny)
 library(bslib)
 
-# ---------- Load model & scaler ----------
+
 
 # ---------- Load model & scaler safely ----------
 load_assets <- function() {
@@ -181,8 +181,8 @@ server <- function(input, output, session) {
       family_history = as.integer(input$family_history),
       chronic_stress = as.integer(input$chronic_stress),
       gender = as.integer(input$gender),
-      age = raw_age,                 # ✅ required
-      age_scaled = scaled_age[,1]    # ✅ required
+      age = raw_age,                 
+      age_scaled = scaled_age[,1]    
     )
     
     res <- tryCatch({
@@ -236,6 +236,7 @@ shinyApp(ui, server)
 
 getwd()
 list.files()
+
 
 
 
