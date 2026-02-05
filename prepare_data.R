@@ -15,7 +15,7 @@ df <- read_csv("Data/HealthRiskPredictorDataset.csv") %>%
 df <- df %>% drop_na()
 
 
-# Convert Binary Columns to Factors
+# Converting Binary Columns to Factors
 
 binary_cols <- c("chest_pain","shortness_of_breath","fatigue","palpitations",
                  "high_bp","high_cholesterol","diabetes","smoking",
@@ -43,6 +43,7 @@ write_csv(df, "data/HealthRiskPredictorDataset.csv")
 
 
 saveRDS(preproc, "models/age_scaler.rds")
+
 
 
 
