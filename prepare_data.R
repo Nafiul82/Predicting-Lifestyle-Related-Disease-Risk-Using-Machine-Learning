@@ -5,9 +5,16 @@ install.packages(c("tidyverse", "janitor", "caret", "pROC"))
 library(tidyverse)
 library(janitor)
 library(caret)
+install.packages("here")
+library(here)
 
-df <- read_csv("Data/HealthRiskPredictorDataset.csv") %>%
+
+df <- read_csv(here("Data", "HealthRiskPredictorDataset.csv")) %>%
   clean_names()
+
+
+#df <- read_csv("Data/HealthRiskPredictorDataset.csv") %>%
+ # clean_names()
 
 
 # Handling  Missing Values
@@ -35,6 +42,8 @@ str(df$age_scaled)
 
 names(df)
 
+file.exists("../Data/HealthRiskPredictorDataset.csv")
+
 
 
 
@@ -43,7 +52,6 @@ write_csv(df, "data/HealthRiskPredictorDataset.csv")
 
 
 saveRDS(preproc, "models/age_scaler.rds")
-
 
 
 
