@@ -1,33 +1,9 @@
+options(repos = c(CRAN = "https://cran.r-project.org"))
+
 library(shiny)
 library(bslib)
-
-
-
-# ---------- Load model & scaler safely ----------
-load_assets <- function() {
-  possible_model_paths <- c("models/final_model.rds", "final_model.rds")
-  possible_scaler_paths <- c("models/age_scaler.rds", "age_scaler.rds")
-  
-  model_path <- possible_model_paths[file.exists(possible_model_paths)][1]
-  scaler_path <- possible_scaler_paths[file.exists(possible_scaler_paths)][1]
-  
-  if (is.na(model_path) || is.na(scaler_path)) {
-    message("Model or scaler file not found at startup.")
-    return(NULL)
-  }
-  
-  list(
-    model = readRDS(model_path),
-    scaler = readRDS(scaler_path)
-  )
-}
-
-assets <- load_assets()
-
-final_model <- if (!is.null(assets)) assets$model else NULL
-age_scaler  <- if (!is.null(assets)) assets$scaler else NULL
-
-
+library(gbm)
+library(caret)
 
 # ---------- Lifestyle suggestions ----------
 get_suggestions <- function(x) {
@@ -46,19 +22,25 @@ get_suggestions <- function(x) {
 
 # ---------- UI ----------
 ui <- page_navbar(
-  title = "Health Risk Predictor",
-  theme = bs_theme(version = 5, bootswatch = "flatly", base_font = font_google("Poppins")),
+  title = "Heart Risk Predictor",
+  theme = bs_theme(version = 5, bootswatch = "flatly", primary = "#0d6efd"),
   
   nav_panel("Home",
             h2("Heart Risk Prediction Tool"),
-            p("Educational tool to estimate heart risk using machine learning."),
-            p("Not a medical diagnosis.")
+            p("Educational tool to estimate heart disease risk using machine learning."),
+            p("This system provides preventive lifestyle recommendations."),
+            tags$br(),
+            tags$div(
+              style="background:#f8f9fa; padding:15px; border-radius:10px;",
+              strong("Disclaimer: "),
+              "This tool is for educational purposes and not a medical diagnosis."
+            )
   ),
   
   nav_panel("Login",
             textInput("login_user", "Username"),
             passwordInput("login_pass", "Password"),
-            actionButton("login_btn", "Login"),
+            actionButton("login_btn", "Login", class="btn-primary"),
             uiOutput("login_msg")
   ),
   
@@ -66,7 +48,7 @@ ui <- page_navbar(
             textInput("signup_user", "Username"),
             passwordInput("signup_pass", "Password"),
             passwordInput("signup_pass2", "Confirm Password"),
-            actionButton("signup_btn", "Sign Up"),
+            actionButton("signup_btn", "Sign Up", class="btn-success"),
             uiOutput("signup_msg")
   ),
   
@@ -81,28 +63,27 @@ server <- function(input, output, session) {
   users <- reactiveVal(data.frame(username=character(), password=character()))
   logged_in <- reactiveVal(FALSE)
   
+  final_model <- readRDS("models/final_model.rds")
+  
+  train_data <- final_model$trainingData
+  age_mean <- mean(train_data$age, na.rm = TRUE)
+  age_sd   <- sd(train_data$age, na.rm = TRUE)
+  
   # ----- Signup -----
   observeEvent(input$signup_btn, {
-    validate(
-      need(nchar(input$signup_user) >= 4, "Username too short"),
-      need(nchar(input$signup_pass) >= 6, "Password too short"),
-      need(input$signup_pass == input$signup_pass2, "Passwords do not match")
-    )
-    
+    if (nchar(input$signup_user) < 4) { output$signup_msg <- renderText("Username must be at least 4 characters."); return() }
+    if (nchar(input$signup_pass) < 6) { output$signup_msg <- renderText("Password must be at least 6 characters."); return() }
+    if (input$signup_pass != input$signup_pass2) { output$signup_msg <- renderText("Passwords do not match."); return() }
     df <- users()
-    if (input$signup_user %in% df$username) {
-      output$signup_msg <- renderText("Username already exists.")
-    } else {
-      users(rbind(df, data.frame(username=input$signup_user, password=input$signup_pass)))
-      output$signup_msg <- renderText("Account created. Please login.")
-    }
+    if (input$signup_user %in% df$username) { output$signup_msg <- renderText("Username already exists."); return() }
+    users(rbind(df, data.frame(username=input$signup_user, password=input$signup_pass)))
+    output$signup_msg <- renderText("Account created successfully. Please login.")
   })
   
   # ----- Login -----
   observeEvent(input$login_btn, {
     df <- users()
-    ok <- nrow(df) > 0 &&
-      input$login_user %in% df$username &&
+    ok <- nrow(df) > 0 && input$login_user %in% df$username &&
       df$password[df$username==input$login_user] == input$login_pass
     
     if (ok) {
@@ -113,33 +94,47 @@ server <- function(input, output, session) {
     }
   })
   
-  # ----- Protected Prediction Page -----
+  # ----- Prediction Page -----
   output$predict_page <- renderUI({
-    if (!logged_in()) {
-      return(h4("Please login to access predictions."))
-    }
+    if (!logged_in()) return(h4("Please login to access predictions."))
     
     fluidPage(
       sidebarLayout(
+        
         sidebarPanel(
+          
+          h4("Patient Information"),
+          
+          tags$div(
+            style="background:#eef5ff; padding:12px; border-radius:10px;",
+            strong("Note: "),
+            "Select Yes or No for each risk factor."
+          ),
+          
           sliderInput("age", "Age", 18, 90, 30),
-          selectInput("gender","Gender",c("0","1")),
-          selectInput("smoking","Smoking",c("0","1")),
-          selectInput("obesity","Obesity",c("0","1")),
-          selectInput("high_bp","High BP",c("0","1")),
-          selectInput("high_cholesterol","High Cholesterol",c("0","1")),
-          selectInput("diabetes","Diabetes",c("0","1")),
-          selectInput("family_history","Family History",c("0","1")),
-          selectInput("chronic_stress","Chronic Stress",c("0","1")),
-          selectInput("chest_pain","Chest Pain",c("0","1")),
-          selectInput("shortness_of_breath","Shortness of Breath",c("0","1")),
-          selectInput("fatigue","Fatigue",c("0","1")),
-          selectInput("palpitations","Palpitations",c("0","1")),
-          actionButton("predict_btn", "Predict Risk")
+          
+          selectInput("gender","Gender",
+                      choices=c("Female"=0,"Male"=1)),
+          
+          selectInput("smoking","Smoking",c("No"=0,"Yes"=1)),
+          selectInput("obesity","Obesity",c("No"=0,"Yes"=1)),
+          selectInput("high_bp","High Blood Pressure",c("No"=0,"Yes"=1)),
+          selectInput("high_cholesterol","High Cholesterol",c("No"=0,"Yes"=1)),
+          selectInput("diabetes","Diabetes",c("No"=0,"Yes"=1)),
+          selectInput("family_history","Family History",c("No"=0,"Yes"=1)),
+          selectInput("chronic_stress","Chronic Stress",c("No"=0,"Yes"=1)),
+          selectInput("chest_pain","Chest Pain",c("No"=0,"Yes"=1)),
+          selectInput("shortness_of_breath","Shortness of Breath",c("No"=0,"Yes"=1)),
+          selectInput("fatigue","Fatigue",c("No"=0,"Yes"=1)),
+          selectInput("palpitations","Palpitations",c("No"=0,"Yes"=1)),
+          
+          actionButton("predict_btn", "Predict Risk", class="btn-danger")
         ),
+        
         mainPanel(
-          uiOutput("risk_summary"),
-          plotOutput("prob_plot"),
+          uiOutput("risk_card"),
+          plotOutput("prob_plot", height="350px"),
+          tags$br(),
           uiOutput("suggestions_out")
         )
       )
@@ -149,96 +144,89 @@ server <- function(input, output, session) {
   pred_state <- reactiveVal(NULL)
   
   # ----- Prediction -----
-  
-  
-  
   observeEvent(input$predict_btn, {
     req(logged_in())
     
-    validate(
-      need(!is.null(final_model), "Model file not loaded."),
-      need(!is.null(age_scaler), "Scaler file not loaded.")
-    )
-    
-    
-    # Raw age (model expects this too)
     raw_age <- as.numeric(input$age)
-    
-    # Scaled age (same transformation used in training)
-    age_df <- data.frame(age = raw_age)
-    scaled_age <- predict(age_scaler, age_df)
+    age_scaled <- (raw_age - age_mean) / age_sd
     
     new_user <- data.frame(
-      chest_pain = as.integer(input$chest_pain),
-      shortness_of_breath = as.integer(input$shortness_of_breath),
-      fatigue = as.integer(input$fatigue),
-      palpitations = as.integer(input$palpitations),
-      high_bp = as.integer(input$high_bp),
-      high_cholesterol = as.integer(input$high_cholesterol),
-      diabetes = as.integer(input$diabetes),
-      smoking = as.integer(input$smoking),
-      obesity = as.integer(input$obesity),
-      family_history = as.integer(input$family_history),
-      chronic_stress = as.integer(input$chronic_stress),
-      gender = as.integer(input$gender),
-      age = raw_age,                 
-      age_scaled = scaled_age[,1]    
+      chest_pain = as.numeric(input$chest_pain),
+      shortness_of_breath = as.numeric(input$shortness_of_breath),
+      fatigue = as.numeric(input$fatigue),
+      palpitations = as.numeric(input$palpitations),
+      high_bp = as.numeric(input$high_bp),
+      high_cholesterol = as.numeric(input$high_cholesterol),
+      diabetes = as.numeric(input$diabetes),
+      smoking = as.numeric(input$smoking),
+      obesity = as.numeric(input$obesity),
+      family_history = as.numeric(input$family_history),
+      chronic_stress = as.numeric(input$chronic_stress),
+      gender = as.numeric(input$gender),
+      age = raw_age,
+      age_scaled = age_scaled
     )
     
-    res <- tryCatch({
-      prob <- predict(final_model, new_user, type="prob")[,"Yes"]
-      prob <- as.numeric(prob)
-      
-      risk_cat <- if (prob < 0.33) "Low Risk"
-      else if (prob < 0.66) "Moderate Risk"
-      else "High Risk"
-      
-      list(prob = prob, risk_cat = risk_cat, new_user = new_user)
-      
-    }, error = function(e) {
-      showNotification(paste("Prediction error:", e$message), type = "error")
-      NULL
-    })
+    p <- predict(final_model, new_user, type="prob")
+    prob <- as.numeric(p[,"Yes"])
     
-    if (!is.null(res)) pred_state(res)
+    risk_cat <- if (prob < 0.33) "Low Risk"
+    else if (prob < 0.66) "Moderate Risk"
+    else "High Risk"
+    
+    pred_state(list(prob=prob, risk_cat=risk_cat, new_user=new_user))
   })
   
-  
-  
-  
-  
-  
-  
- 
-  
-  
-  # ----- Outputs -----
-  output$risk_summary <- renderUI({
+  # Risk card
+  output$risk_card <- renderUI({
     st <- pred_state()
-    if (is.null(st)) return("No prediction yet.")
-    paste0(st$risk_cat, " • Probability: ", round(st$prob*100,1), "%")
+    if (is.null(st)) return(NULL)
+    
+    colour <- if (st$risk_cat=="Low Risk") "#198754"
+    else if (st$risk_cat=="Moderate Risk") "#fd7e14"
+    else "#dc3545"
+    
+    tags$div(
+      style=paste0("background:",colour,
+                   "; color:white; padding:20px; border-radius:12px;
+                   font-size:20px; font-weight:600;"),
+      paste0(st$risk_cat,
+             " • Probability: ",
+             round(st$prob*100,1), "%")
+    )
   })
   
+  #  Pie 
   output$prob_plot <- renderPlot({
     st <- pred_state()
     if (is.null(st)) return(NULL)
-    barplot(st$prob, horiz=TRUE, xlim=c(0,1), main="Predicted Heart Risk Probability")
+    
+    vals <- c(st$prob, 1 - st$prob)
+    labels <- c("Heart Risk", "Low Risk")
+    
+    par(mar=c(2,2,2,2))
+    pie(vals,
+        labels=paste0(labels," (",round(vals*100,1),"%)"),
+        main="Risk Distribution")
   })
   
+  # ----- Suggestions -----
   output$suggestions_out <- renderUI({
     st <- pred_state()
-    if (is.null(st)) return("Suggestions will appear after prediction.")
-    tags$ul(lapply(get_suggestions(st$new_user), tags$li))
+    if (is.null(st)) return(NULL)
+    
+    suggestions <- get_suggestions(st$new_user)
+    
+    tags$div(
+      style="background:black; color:white; padding:20px; border-radius:12px;",
+      tags$h4("Lifestyle Improvement Suggestions"),
+      tags$table(
+        lapply(suggestions, function(s){
+          tags$tr(tags$td(s, style="padding:10px; border-bottom:1px solid #444;"))
+        })
+      )
+    )
   })
 }
 
 shinyApp(ui, server)
-
-getwd()
-list.files()
-
-
-
-
-
-
