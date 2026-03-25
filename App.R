@@ -74,7 +74,7 @@ ui <- page_navbar(
   nav_panel("Home",
             div(style="text-align:center; margin-top:40px;",
                 
-                h1("AI-Based Heart Risk Prediction System",
+                h1("CardioSense AI | AI-Based Heart Risk Prediction System",
                    style="font-weight:700; font-size:42px;"),
                 
                 p("Empowering preventive healthcare through intelligent machine learning insights",
@@ -121,7 +121,7 @@ ui <- page_navbar(
   nav_panel("Login",
             div(style="max-width:400px; margin:auto; margin-top:50px;",
                 div(class="card",
-                    h3("Login - CardioSense AI"),
+                    h3("Login-CardioSense AI"),
                     textInput("login_user", "Username"),
                     passwordInput("login_pass", "Password"),
                     actionButton("login_btn", "Login", class="btn-modern", style="width:100%"),
