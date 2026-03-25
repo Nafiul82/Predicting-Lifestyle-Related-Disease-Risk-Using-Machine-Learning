@@ -84,7 +84,6 @@ saveRDS(gbm_model, "models/gbm_model.rds")
 
 # Calculating Accuracy, Precision, Recall, F1
 
-# Convert probabilities → class predictions
 
 log_pred_class <- ifelse(log_probs > 0.5, "Yes", "No")
 log_pred_class <- factor(log_pred_class, levels=c("No","Yes"))
@@ -146,3 +145,42 @@ results_metrics <- data.frame(
 )
 
 print(results_metrics)
+
+# Converting confusion matrix to dataframe
+cm_gbm_df <- as.data.frame(cm_gbm$table)
+
+ggplot(cm_gbm_df, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), size = 6) +
+  labs(title = "Confusion Matrix (Gradient Boosting Model)",
+       x = "Predicted Label",
+       y = "Actual Label") +
+  theme_minimal()
+
+metrics_plot <- data.frame(
+  Model = rep(c("Logistic Regression","Random Forest","GBM"), each=3),
+  Metric = rep(c("Precision","Recall","F1"), times=3),
+  Value = c(
+    metrics_log["Precision"], metrics_log["Recall"], metrics_log["F1"],
+    metrics_rf["Precision"],  metrics_rf["Recall"],  metrics_rf["F1"],
+    metrics_gbm["Precision"], metrics_gbm["Recall"], metrics_gbm["F1"]
+  )
+)
+
+ggplot(metrics_plot, aes(x = Metric, y = Value, fill = Model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Model Performance Metrics Comparison",
+       y = "Score") +
+  theme_minimal()
+roc_log <- roc(test$heart_risk, log_probs, levels=rev(levels(test$heart_risk)))
+roc_rf  <- roc(test$heart_risk, rf_probs,  levels=rev(levels(test$heart_risk)))
+roc_gbm <- roc(test$heart_risk, gbm_probs, levels=rev(levels(test$heart_risk)))
+
+plot(roc_log, lwd=2, main="ROC Curve Comparison")
+lines(roc_rf, col=2, lwd=2)
+lines(roc_gbm, col=3, lwd=2)
+
+legend("bottomright",
+       legend=c("Logistic Regression","Random Forest","GBM"),
+       col=c(1,2,3),
+       lwd=2)
