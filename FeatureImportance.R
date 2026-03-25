@@ -16,7 +16,7 @@ final_model <- readRDS("models/final_model.rds")
 print(class(final_model))
 
 
-# Extract feature importance
+# Extract
 
 importance <- caret::varImp(final_model, scale = TRUE)
 
@@ -24,21 +24,20 @@ importance <- caret::varImp(final_model, scale = TRUE)
 print(importance)
 
 
-# Convert to dataframe
+# Converting to dataframe
 
 imp_df <- importance$importance
 imp_df$Feature <- rownames(imp_df)
 
-# Remove rownames
+# Removing rownames
 rownames(imp_df) <- NULL
 View(imp_df)   # Opens spreadsheet-style viewer
 
-# Show top 10 important features
 cat("\nTop 10 Important Features:\n")
 print(head(imp_df, 10))
 
 
-# Plot feature importance
+# Plotting feature importance
 
 p <- ggplot(imp_df, aes(x = reorder(Feature, Overall), y = Overall)) +
   geom_bar(stat = "identity", fill = "steelblue") +
@@ -52,13 +51,12 @@ p <- ggplot(imp_df, aes(x = reorder(Feature, Overall), y = Overall)) +
 
 print(p)
 
-# Create folder if not exists
 
 if (!dir.exists("docs")) {
   dir.create("docs")
 }
 
-# Save plot
+# Saving plot
 
 ggsave(
   filename = "docs/feature_importance.png",
